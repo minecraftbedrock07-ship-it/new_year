@@ -53,7 +53,7 @@ from aiogram.types import BotCommand, Message
 
 # ───────────────────── НАСТРОЙКИ ─────────────────────
 
-TOKEN = os.getenv("BOT_TOKEN", "")
+TOKEN = os.getenv("BOT_TOKEN", "9269484019:AAEZAFQ-BtT0Ncct2Vu9-UiczMrlBD720Hg")
 
 # ВПИШИ СЮДА СВОЙ TELEGRAM ID
 OWNER_ID = 1377920047
