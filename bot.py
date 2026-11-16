@@ -44,14 +44,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import aiohttp
-
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand, Message, FSInputFile
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.filters import Command
-from aiogram.types import BotCommand, Message
 
 
 # ───────────────────── НАСТРОЙКИ ─────────────────────
@@ -316,7 +315,7 @@ async def send_countdown(message: Message):
     if video_path:
 
         try:
-            await message.answer_video(video=video_path)
+            await message.answer_video(video=FSInputFile(video_path))
 
         except Exception:
             log.exception("Ошибка отправки видео")
@@ -396,7 +395,7 @@ async def cmd_video(message: Message):
     try:
 
         await message.answer_video(
-            video=video_path,
+            video=FSInputFile(video_path),
             caption=f"Видео за {days}-й день"
         )
 
@@ -465,7 +464,7 @@ async def push(bot: Bot):
 
                     msg = await bot.send_video(
                         chat_id=chat_id,
-                        video=video_path,
+                        video=FSInputFile(video_path),
                         **extra
                     )
 
