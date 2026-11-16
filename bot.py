@@ -255,62 +255,86 @@ def remember(chat_id, thread_id=None):
         log.warning("Не удалось сохранить чаты: %s", exc)
 
 
-# ───────────────────── GITHUB ВИДЕО ──────────────────
+# ───────────────────── КОМАНДА ВИДЕО ─────────────────
 
-async def download_video(days):
+@dp.message()
+async def cmd_video(message: Message):
 
-    video_path = VIDEO_CACHE / f"{days}.mp4"
+    raw_text = (message.text or "").strip()
 
-    if video_path.exists() and video_path.stat().st_size > 0:
-        return video_path
+    # Проверяем команду вручную, включая /video@имя_бота
+    if not raw_text.startswith("/"):
+        return
 
-    url = f"{GITHUB_VIDEO_URL}{days}.mp4"
+    parts = raw_text.split()
+    command = parts[0].split("@")[0].lower()
 
-    log.info("Скачиваю видео: %s", url)
+    if command != "/video":
+        return
 
-    timeout = aiohttp.ClientTimeout(
-        total=180,
-        connect=30
+    log.info(
+        "Получена команда /video от пользователя %s, чат %s",
+        message.from_user.id if message.from_user else None,
+        message.chat.type
     )
 
-    temp_path = video_path.with_suffix(".tmp")
+    # Только личные сообщения
+    if message.chat.type != "private":
+        await message.answer("Используй эту команду в личных сообщениях.")
+        return
+
+    # Проверяем владельца
+    if not message.from_user or message.from_user.id != OWNER_ID:
+        actual_id = message.from_user.id if message.from_user else "неизвестен"
+
+        log.warning(
+            "Отказ в доступе к /video. ID отправителя: %s, OWNER_ID: %s",
+            actual_id,
+            OWNER_ID
+        )
+
+        await message.answer("У тебя нет доступа к этой команде.")
+        return
+
+    # Проверяем аргументы
+    if len(parts) > 2:
+        await message.answer("Использование: /video или /video 47")
+        return
+
+    if len(parts) == 2:
+        try:
+            days = int(parts[1])
+
+            if days < 0:
+                raise ValueError
+
+        except ValueError:
+            await message.answer("Использование: /video или /video 47")
+            return
+    else:
+        days = get_days_left()
+
+    await message.answer(f"Загружаю видео {days}.mp4...")
+
+    video_path = await download_video(days)
+
+    if not video_path:
+        await message.answer(
+            f"Не удалось скачать {days}.mp4. Проверь наличие файла на GitHub."
+        )
+        return
 
     try:
+        await message.answer_video(
+            video=video_path,
+            caption=f"Видео за {days}-й день"
+        )
 
-        async with aiohttp.ClientSession(
-            timeout=timeout
-        ) as session:
-
-            async with session.get(url) as response:
-
-                if response.status == 404:
-                    log.warning("Видео %s.mp4 отсутствует", days)
-                    return None
-
-                response.raise_for_status()
-
-                with open(temp_path, "wb") as file:
-
-                    async for chunk in response.content.iter_chunked(
-                        1024 * 1024
-                    ):
-                        file.write(chunk)
-
-                if temp_path.stat().st_size == 0:
-                    temp_path.unlink(missing_ok=True)
-                    return None
-
-                temp_path.replace(video_path)
-
-                log.info("Видео скачано: %s", video_path)
-
-                return video_path
+        log.info("Видео %s.mp4 отправлено владельцу", days)
 
     except Exception:
-        log.exception("Ошибка загрузки видео %s.mp4", days)
-        temp_path.unlink(missing_ok=True)
-        return None
-
+        log.exception("Ошибка отправки видео владельцу")
+        await message.answer("Ошибка при отправке видео.")
 
 # ───────────────────── ОТПРАВКА ──────────────────────
 
