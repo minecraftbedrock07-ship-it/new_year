@@ -56,7 +56,7 @@ from aiogram.types import BotCommand, Message
 TOKEN = os.getenv("BOT_TOKEN", "")
 
 # ВПИШИ СЮДА СВОЙ TELEGRAM ID
-OWNER_ID = 123456789
+OWNER_ID = 1377920047
 
 HAPP_PROXY = "socks5://127.0.0.1:10808"
 
