@@ -9,7 +9,7 @@ Telegram-бот: обратный отсчёт до Нового года + еж
     BOT_TOKEN
 
 Владелец:
-    Впиши свой Telegram ID в OWNER_ID.
+    OWNER_ID — твой Telegram ID.
 
 GitHub:
     https://github.com/minecraftbedrock07-ship-it/bot
@@ -24,7 +24,10 @@ GitHub:
     ежедневно в 00:00 по Москве.
 
 Команды:
-/days       - обратный отсчёт
+/start      - обратный отсчёт + видео
+/days       - обратный отсчёт + видео
+/ny         - обратный отсчёт + видео
+/newyear    - обратный отсчёт + видео
 /video      - видео текущего дня (только владелец)
 /video 47   - видео 47-го дня (только владелец)
 """
@@ -55,7 +58,6 @@ from aiogram.types import BotCommand, Message
 
 TOKEN = os.getenv("BOT_TOKEN", "9269484019:AAEZAFQ-BtT0Ncct2Vu9-UiczMrlBD720Hg")
 
-# ВПИШИ СЮДА СВОЙ TELEGRAM ID
 OWNER_ID = 1377920047
 
 HAPP_PROXY = "socks5://127.0.0.1:10808"
@@ -171,9 +173,62 @@ def countdown_text_by_days(days, now=None):
     )
 
 
+# ───────────────────── СКАЧИВАНИЕ ВИДЕО ───────────────
+
+async def download_video(day: int):
+
+    filename = f"{day}.mp4"
+    cached_path = VIDEO_CACHE / filename
+
+    # Проверяем кэш
+    if cached_path.exists() and cached_path.stat().st_size > 0:
+        return cached_path
+
+    url = GITHUB_VIDEO_URL + filename
+
+    timeout = aiohttp.ClientTimeout(total=120)
+
+    try:
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+
+            async with session.get(url) as response:
+
+                if response.status == 404:
+                    log.warning(
+                        "Видео %s не найдено на GitHub",
+                        filename
+                    )
+                    return None
+
+                response.raise_for_status()
+
+                with open(cached_path, "wb") as file:
+
+                    async for chunk in response.content.iter_chunked(65536):
+                        file.write(chunk)
+
+        if cached_path.exists() and cached_path.stat().st_size > 0:
+
+            log.info("Видео %s успешно скачано", filename)
+            return cached_path
+
+        return None
+
+    except Exception:
+
+        log.exception("Ошибка загрузки видео %s", filename)
+
+        if cached_path.exists():
+            cached_path.unlink()
+
+        return None
+
+
 # ───────────────────── ЧАТЫ ──────────────────────────
 
 def chats():
+
     try:
         raw = json.loads(
             CHATS_FILE.read_text(encoding="utf-8")
@@ -188,6 +243,7 @@ def chats():
     result = []
 
     for item in raw:
+
         try:
 
             if isinstance(item, dict):
@@ -214,6 +270,7 @@ def chats():
 
 
 def save_chats(pairs):
+
     data = []
 
     for chat_id, thread_id in sorted(
@@ -235,6 +292,7 @@ def save_chats(pairs):
 
 
 def remember(chat_id, thread_id=None):
+
     try:
 
         known = set(chats())
@@ -255,100 +313,17 @@ def remember(chat_id, thread_id=None):
         log.warning("Не удалось сохранить чаты: %s", exc)
 
 
-# ───────────────────── КОМАНДА ВИДЕО ─────────────────
+# ───────────────────── ОТПРАВКА ОТСЧЁТА ───────────────
 
-@dp.message()
-async def cmd_video(message: Message):
-
-    raw_text = (message.text or "").strip()
-
-    # Проверяем команду вручную, включая /video@имя_бота
-    if not raw_text.startswith("/"):
-        return
-
-    parts = raw_text.split()
-    command = parts[0].split("@")[0].lower()
-
-    if command != "/video":
-        return
-
-    log.info(
-        "Получена команда /video от пользователя %s, чат %s",
-        message.from_user.id if message.from_user else None,
-        message.chat.type
-    )
-
-    # Только личные сообщения
-    if message.chat.type != "private":
-        await message.answer("Используй эту команду в личных сообщениях.")
-        return
-
-    # Проверяем владельца
-    if not message.from_user or message.from_user.id != OWNER_ID:
-        actual_id = message.from_user.id if message.from_user else "неизвестен"
-
-        log.warning(
-            "Отказ в доступе к /video. ID отправителя: %s, OWNER_ID: %s",
-            actual_id,
-            OWNER_ID
-        )
-
-        await message.answer("У тебя нет доступа к этой команде.")
-        return
-
-    # Проверяем аргументы
-    if len(parts) > 2:
-        await message.answer("Использование: /video или /video 47")
-        return
-
-    if len(parts) == 2:
-        try:
-            days = int(parts[1])
-
-            if days < 0:
-                raise ValueError
-
-        except ValueError:
-            await message.answer("Использование: /video или /video 47")
-            return
-    else:
-        days = get_days_left()
-
-    await message.answer(f"Загружаю видео {days}.mp4...")
-
-    video_path = await download_video(days)
-
-    if not video_path:
-        await message.answer(
-            f"Не удалось скачать {days}.mp4. Проверь наличие файла на GitHub."
-        )
-        return
-
-    try:
-        await message.answer_video(
-            video=video_path,
-            caption=f"Видео за {days}-й день"
-        )
-
-        log.info("Видео %s.mp4 отправлено владельцу", days)
-
-    except Exception:
-        log.exception("Ошибка отправки видео владельцу")
-        await message.answer("Ошибка при отправке видео.")
-
-# ───────────────────── ОТПРАВКА ──────────────────────
-
-async def send_countdown(message):
+async def send_countdown(message: Message):
 
     now = datetime.now(MSK)
     days = get_days_left(now)
 
     text = countdown_text_by_days(days, now)
 
-    # Сначала текст обратного отсчёта
     await message.answer(text)
 
-    # Затем отдельное видео
     video_path = await download_video(days)
 
     if video_path:
@@ -382,36 +357,41 @@ async def cmd_days(message: Message):
 @dp.message(Command("video"))
 async def cmd_video(message: Message):
 
-    # Только личные сообщения
     if message.chat.type != "private":
+        await message.answer(
+            "Используй команду в личных сообщениях."
+        )
         return
 
-    # Проверка владельца
     if not message.from_user or message.from_user.id != OWNER_ID:
+
+        await message.answer(
+            "У тебя нет доступа к этой команде."
+        )
         return
 
     args = (message.text or "").split()
 
     if len(args) > 2:
-        await message.answer("Использование: /video или /video 47")
+
+        await message.answer(
+            "Использование: /video или /video 47"
+        )
         return
 
-    if len(args) > 1:
+    try:
 
-        try:
-            days = int(args[1])
+        days = int(args[1]) if len(args) == 2 else get_days_left()
 
-            if days < 0:
-                raise ValueError
+        if days < 0:
+            raise ValueError
 
-        except ValueError:
-            await message.answer(
-                "Использование: /video или /video 47"
-            )
-            return
+    except ValueError:
 
-    else:
-        days = get_days_left()
+        await message.answer(
+            "Использование: /video или /video 47"
+        )
+        return
 
     await message.answer(
         f"Загружаю видео {days}.mp4..."
@@ -420,6 +400,7 @@ async def cmd_video(message: Message):
     video_path = await download_video(days)
 
     if not video_path:
+
         await message.answer(
             f"Видео {days}.mp4 не найдено на GitHub."
         )
@@ -428,7 +409,8 @@ async def cmd_video(message: Message):
     try:
 
         await message.answer_video(
-            video=video_path
+            video=video_path,
+            caption=f"Видео за {days}-й день"
         )
 
         log.info(
@@ -437,18 +419,25 @@ async def cmd_video(message: Message):
         )
 
     except Exception:
-        log.exception("Ошибка отправки видео владельцу")
-        await message.answer("Не удалось отправить видео.")
+
+        log.exception("Ошибка отправки видео")
+
+        await message.answer(
+            "Не удалось отправить видео."
+        )
 
 
-# ───────────────────── РАССЫЛКА ──────────────────────
+# ───────────────────── РАССЫЛКА ───────────────────────
 
-async def push(bot):
+async def push(bot: Bot):
 
     targets = chats()
 
     if not targets:
-        log.warning("chats.json пуст. Напиши боту /days.")
+
+        log.warning(
+            "chats.json пуст. Напиши боту /start."
+        )
         return
 
     now = datetime.now(MSK)
@@ -456,7 +445,6 @@ async def push(bot):
 
     text = countdown_text_by_days(days, now)
 
-    # Скачиваем видео один раз
     video_path = await download_video(days)
 
     uploaded_file_id = None
@@ -470,14 +458,12 @@ async def push(bot):
 
         try:
 
-            # 1. Отправляем обратный отсчёт
             await bot.send_message(
                 chat_id=chat_id,
                 text=text,
                 **extra
             )
 
-            # 2. Отправляем видео отдельно
             if video_path:
 
                 if uploaded_file_id:
@@ -506,6 +492,7 @@ async def push(bot):
             )
 
         except Exception:
+
             log.exception(
                 "Ошибка отправки в чат %s, тема %s",
                 chat_id,
@@ -532,9 +519,11 @@ def next_midnight(now=None):
     return target
 
 
-async def scheduler(bot):
+async def scheduler(bot: Bot):
 
-    log.info("Планировщик запущен. Ожидание 00:00 МСК.")
+    log.info(
+        "Планировщик запущен. Ожидание 00:00 МСК."
+    )
 
     while True:
 
@@ -562,6 +551,7 @@ async def scheduler(bot):
 def port_open(host, port, timeout=2):
 
     try:
+
         with socket.create_connection(
             (host, port),
             timeout=timeout
@@ -594,6 +584,7 @@ def proxy_candidates():
 async def connect():
 
     if not TOKEN:
+
         raise SystemExit(
             "Не указан BOT_TOKEN в переменных окружения."
         )
@@ -620,7 +611,10 @@ async def connect():
 
             me = await bot.get_me()
 
-            log.info("Подключился как @%s", me.username)
+            log.info(
+                "Подключился как @%s",
+                me.username
+            )
 
             return bot
 
@@ -628,7 +622,9 @@ async def connect():
 
             await bot.session.close()
 
-            raise SystemExit("Telegram отверг токен.")
+            raise SystemExit(
+                "Telegram отверг токен."
+            )
 
         except Exception as exc:
 
@@ -655,6 +651,10 @@ async def main():
         await bot.set_my_commands(
             [
                 BotCommand(
+                    command="start",
+                    description="Запустить бота"
+                ),
+                BotCommand(
                     command="days",
                     description="Сколько дней до Нового года"
                 ),
@@ -669,14 +669,20 @@ async def main():
             drop_pending_updates=True
         )
 
-        log.info("Бот запущен. Видео берутся с GitHub.")
-        log.info("Рассылка ежедневно в 00:00 МСК.")
+        log.info(
+            "Бот запущен. Видео берутся с GitHub."
+        )
+
+        log.info(
+            "Рассылка ежедневно в 00:00 МСК."
+        )
 
         scheduler_task = asyncio.create_task(
             scheduler(bot)
         )
 
         try:
+
             await dp.start_polling(bot)
 
         finally:
