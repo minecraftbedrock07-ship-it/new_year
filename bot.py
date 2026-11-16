@@ -173,58 +173,6 @@ def countdown_text_by_days(days, now=None):
     )
 
 
-# ───────────────────── СКАЧИВАНИЕ ВИДЕО ───────────────
-
-async def download_video(day: int):
-
-    filename = f"{day}.mp4"
-    cached_path = VIDEO_CACHE / filename
-
-    # Проверяем кэш
-    if cached_path.exists() and cached_path.stat().st_size > 0:
-        return cached_path
-
-    url = GITHUB_VIDEO_URL + filename
-
-    timeout = aiohttp.ClientTimeout(total=120)
-
-    try:
-
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-
-            async with session.get(url) as response:
-
-                if response.status == 404:
-                    log.warning(
-                        "Видео %s не найдено на GitHub",
-                        filename
-                    )
-                    return None
-
-                response.raise_for_status()
-
-                with open(cached_path, "wb") as file:
-
-                    async for chunk in response.content.iter_chunked(65536):
-                        file.write(chunk)
-
-        if cached_path.exists() and cached_path.stat().st_size > 0:
-
-            log.info("Видео %s успешно скачано", filename)
-            return cached_path
-
-        return None
-
-    except Exception:
-
-        log.exception("Ошибка загрузки видео %s", filename)
-
-        if cached_path.exists():
-            cached_path.unlink()
-
-        return None
-
-
 # ───────────────────── ЧАТЫ ──────────────────────────
 
 def chats():
@@ -312,6 +260,43 @@ def remember(chat_id, thread_id=None):
     except OSError as exc:
         log.warning("Не удалось сохранить чаты: %s", exc)
 
+# ───────────────────── СКАЧИВАНИЕ ВИДЕО ───────────────
+
+async def download_video(day: int):
+    filename = f"{day}.mp4"
+    cached_path = VIDEO_CACHE / filename
+
+    if cached_path.exists() and cached_path.stat().st_size > 0:
+        return cached_path
+
+    url = GITHUB_VIDEO_URL + filename
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=120)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as response:
+                if response.status == 404:
+                    log.warning("Видео %s не найдено", filename)
+                    return None
+
+                response.raise_for_status()
+
+                with open(cached_path, "wb") as file:
+                    async for chunk in response.content.iter_chunked(65536):
+                        file.write(chunk)
+
+        if cached_path.stat().st_size > 0:
+            log.info("Видео %s скачано", filename)
+            return cached_path
+
+    except Exception:
+        log.exception("Ошибка скачивания %s", filename)
+
+        if cached_path.exists():
+            cached_path.unlink()
+
+    return None
 
 # ───────────────────── ОТПРАВКА ОТСЧЁТА ───────────────
 
