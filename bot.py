@@ -70,7 +70,7 @@ CHATS_FILE = BASE_DIR / "chats.json"
 
 GITHUB_VIDEO_URL = (
     "https://raw.githubusercontent.com/"
-    "minecraftbedrock07-ship-it/bot/main/videos/"
+    "minecraftbedrock07-ship-it/new_year/main/videos/"
 )
 
 VIDEO_CACHE = Path(tempfile.gettempdir()) / "newyear_bot_videos"
