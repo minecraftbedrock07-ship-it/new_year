@@ -276,6 +276,8 @@ async def download_video(day: int):
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as response:
+                log.info("ЗАПРОС ВИДЕО: %s", url)
+                log.info("ОТВЕТ GITHUB: HTTP %s", response.status)
                 if response.status == 404:
                     log.warning("Видео %s не найдено", filename)
                     return None
